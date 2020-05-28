@@ -1,6 +1,9 @@
 name = "PkgBake"
 uuid = "bf1c9d19-6d6d-96d5-9eb1-ae47005b5dcb"
 
+[compat]
+julia = "1.5"
+
 [deps]
 Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 CRC32c = "8bf52ea8-c179-5cab-976a-9e18b702a9bc"

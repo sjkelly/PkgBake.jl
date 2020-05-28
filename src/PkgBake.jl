@@ -20,54 +20,32 @@ const bakeable_libs = [Base,
     Pkg, Statistics]
 # TODO: Future not included
 
+const __BAKEFILE = "bakefile.jl"
+
+function init_dir()
+    isempty(DEPOT_PATH) && @error "DEPOT_PATH is empty!"
+    dir = joinpath(DEPOT_PATH[1],"pkgbake")
+    !isdir(dir) && mkdir(dir)
+    return abspath(dir)
+end
+
 """
     bake
 
 Add additional precompiled methods to Base and StdLibs that are self contained.
 """
-function bake(;dir=dirname(Base.active_project()), replace_default=true)
-    @info "PkgBake: Loading Packages and generating precompile statements for $dir"
-    ctx = create_pkg_context(dir)
-    deps = values(Pkg.dependencies(create_pkg_context(dir)))
+function bake(;project=dirname(Base.active_project()), useproject=false, replace_default=true)
+    pkgbakedir = init_dir()
 
-    pipe_out = "pipeout.txt"
-    touch(pipe_out)
-
-    precompile_lines = String[]
-
-    progress = Progress(length(deps), 1)
-    for dep in deps
-
-        next!(progress, showvalues = [(:dep,dep.name), (:statements, length(precompile_lines))])
-
-        # skip stdlibs
-        if in(dep.name, string.(bakeable_libs)) || !dep.is_direct_dep
-            continue
-        end
-        pc_temp = tempname()
-        touch(pc_temp)
-        cmd = `$(get_julia_cmd()) --project=$dir --trace-compile=$pc_temp -e $("using $(dep.name)")`
-        try
-            run(pipeline(cmd, stdout=pipe_out, stderr=pipe_out, append=true))
-        catch err
-            if isa(err, InterruptException)
-                @warn "PkgBake: Interrupted by user"
-                exit()
-            else
-                continue
-            end
-        end
-        new_lines = readlines(pc_temp)
-        rm(pc_temp)
-        if !isempty(new_lines)
-            append!(precompile_lines, new_lines)
-        end
+    if useproject
+        add_project_runtime_precompiles(project)
     end
+
+    precompile_lines = readlines(abspath(joinpath(init_dir(), "bakefile.jl")))
 
     unique!(sort!(precompile_lines))
 
-    timestamp = Dates.format(now(), "yyyy-mm-ddTHH_MM")
-    pc_unsanitized = "pkgbake_unsanitized_$(timestamp).jl"
+    pc_unsanitized = joinpath(pkgbakedir, "pkgbake_unsanitized.jl")
     @info "PkgBake: Writing unsanitized precompiles to $pc_unsanitized"
     open(pc_unsanitized, "w") do io
         for line in precompile_lines
@@ -76,22 +54,83 @@ function bake(;dir=dirname(Base.active_project()), replace_default=true)
     end
 
     original_len = length(precompile_lines)
-    @info "PkgBake: Santizing precompile statments"
     sanitized_lines = sanitize_precompile(precompile_lines)
     sanitized_len = length(sanitized_lines)
 
-    pc_sanitized = "pkgbake_sanitized_$(timestamp).jl"
-    @info "PkgBake: Writing unsanitized precompiles to $pc_sanitized"
+    pc_sanitized = joinpath(pkgbakedir, "pkgbake_sanitized.jl")
+    @info "PkgBake: Writing sanitized precompiles to $pc_sanitized"
     open(pc_sanitized, "w") do io
         for line in sanitized_lines
             println(io, line)
         end
     end
 
-    @info "PkgBake: Found $sanitized_len precompilable methods for base out of $original_len generated statements"
-    #@show precompile_lines, sanitized_lines
-    #PackageCompiler.create_sysimage(; precompile_statements_file="ohmyrepl_precompile.jl", replace_default=replace_default)
+    @info "PkgBake: Found $sanitized_len new precompilable methods for Base out of $original_len generated statements"
+    @info "PkgBake: Generating sysimage"
+    PackageCompiler.create_sysimage(; precompile_statements_file=pc_sanitized, replace_default=replace_default)
+
+    push_bakefile_back()
 end
+
+
+function add_project_runtime_precompiles(project)
+    @info "PkgBake: Observing load-time precompile statements for project: $project"
+    ctx = create_pkg_context(project)
+    deps = values(Pkg.dependencies(create_pkg_context(project)))
+
+    precompile_lines = String[]
+
+    progress = Progress(length(deps), 1)
+
+    bakefile_io() do io
+        println(io, pkgbake_stamp())
+
+        for dep in deps
+
+            next!(progress, showvalues = [(:dep,dep.name), (:statements, length(precompile_lines))])
+
+            # skip stdlibs and non-direct deps
+            # TODO: Not sure if direct_dep means what i think it does
+            if in(dep.name, string.(bakeable_libs)) || !dep.is_direct_dep
+                continue
+            end
+            pc_temp = tempname()
+            touch(pc_temp)
+            cmd = `$(get_julia_cmd()) --project=$dir --startup-file=no --trace-compile=$pc_temp -e $("using $(dep.name)")`
+            try
+                run(pipeline(cmd, devnull))
+            catch err
+                if isa(err, InterruptException)
+                    @warn "PkgBake: Interrupted by user"
+                    exit()
+                else
+                    continue
+                end
+            end
+            for l in eachline(pc_temp,keep=true)
+                write(io, l)
+            end
+            rm(pc_temp)
+        end
+    end
+end
+
+const N_HISTORY = 10
+bakefile_n(n) = abspath(joinpath(init_dir(), "bakefile_$(n).jl"))
+function push_bakefile_back()
+    dir = init_dir()
+    bake = abspath(joinpath(dir, "bakefile.jl"))
+    isfile(bakefile_n(N_HISTORY)) && rm(bakefile_n(N_HISTORY))
+    # push back the history stack
+    for n in (N_HISTORY-1):1
+        isfile(bakefile_n(n)) && mv(bakefile_n(n), bakefile_n(n+1))
+    end
+    mv(bake, bakefile_n(1))
+    touch(bake)
+
+    return nothing
+end
+
 
 """
     sanitize_precompile()
@@ -104,7 +143,7 @@ function sanitize_precompile(precompile_lines::Vector{String})
     for line in precompile_lines
         # Generally any line with where is non-concrete, so we can skip.
         # Symbol is also runtime dependent so skip as well
-        if isempty(line) || contains(line, "where") || contains(line, "Symbol(")
+        if isempty(line) || contains(line, '#') || contains(line, "where") || contains(line, "Symbol(")
             continue
         else
             try
@@ -132,10 +171,17 @@ function can_precompile(ex::Expr)
     end
 end
 
+# TODO: Some Base are marked nospecialize, so we should filter these out also
 """
     recurse through the call and make sure everything is in Base, Core, or a StdLib
 """
 function is_bakeable(ex::Expr)
+
+    # handle submodule (this might not be robust)
+    if ex.head === :. && is_bakeable(ex.args[1])
+        return true
+    end
+
     for arg in ex.args
         #@show arg, typeof(arg)
         if is_bakeable(arg)
@@ -177,6 +223,46 @@ function create_pkg_context(project)
         error("could not find project at $(repr(project))")
     end
     return Pkg.Types.Context(env=Pkg.Types.EnvCache(project_toml_path))
+end
+
+function pkgbake_stamp()
+    "\n\t#version = $(VERSION); date = $(Dates.now())"
+end
+
+function bakefile_io(f)
+    bake = abspath(joinpath(init_dir(), "bakefile.jl"))
+    !isfile(bake) && touch(bake)
+    open(f, bake, "a")
+end
+
+"""
+atexit hook for caching precompile files
+
+add to .julia/config/startup.jl
+
+```
+using PkgBake
+
+atexit(PkgBake.atexit_hook)
+```
+"""
+function atexit_hook()
+
+    jloptstc = Base.JLOptions().trace_compile
+    jloptstc == C_NULL && return
+
+    trace_path = abspath(unsafe_string(jloptstc))
+    isempty(trace_path) && return
+
+    trace_file = open(trace_path, "r")
+
+    bakefile_io() do io
+        println(io, pkgbake_stamp())
+        for l in eachline(trace_file, keep=true)
+            write(io, l)
+        end
+    end
+    close(trace_file)
 end
 
 
