@@ -2,6 +2,7 @@ module PkgBake
 
 using PackageCompiler
 using ProgressMeter
+using MethodAnalysis
 
 #stdlibs
 using Base64, CRC32c, Dates, DelimitedFiles, Distributed, FileWatching,
@@ -10,7 +11,7 @@ using Base64, CRC32c, Dates, DelimitedFiles, Distributed, FileWatching,
       SharedArrays, Sockets, SparseArrays, SuiteSparse, Test, Unicode, UUIDs,
       Pkg, Statistics
 
-const bakeable_libs = [Base,
+const base_stdlibs = [Base,
     # included stdlibs
     Base64, CRC32c, Dates, DelimitedFiles, Distributed, FileWatching,
     InteractiveUtils, Libdl, LibGit2, LinearAlgebra, Logging,
@@ -19,6 +20,22 @@ const bakeable_libs = [Base,
     # external
     Pkg, Statistics]
 # TODO: Future not included
+
+function get_all_modules()
+    mods = Module[]
+    for lib in base_stdlibs
+        visit(lib) do obj
+            if isa(obj, Module)
+                push!(mods, obj)
+                return true     # descend into submodules
+            end
+            false   # but don't descend into anything else (MethodTables, etc.)
+        end
+    end
+    return vcat(mods, base_stdlibs)
+end
+
+const bakeable_libs = get_all_modules()
 
 const __BAKEFILE = "bakefile.jl"
 
@@ -29,9 +46,12 @@ function __init__()
     load_config()
     t = Task() do
         while true
-            FileWatching.watch_file(joinpath(DEPOT_PATH[1], "logs", "manifest_usage.toml"))
-            sleep(0.01) # debounce, TODO
-            @info "PkgBake: Project Changed, switching sysimg, reboot to take effect"
+            manifest_usage = joinpath(DEPOT_PATH[1], "logs", "manifest_usage.toml")
+            event = FileWatching.watch_file(manifest_usage)
+            #if event.changed
+            #    @info "PkgBake: Project Changed, switching sysimg, reboot to take effect"
+            #end
+            # findlast(isequal('o'))
             # proj = Base.active_project()
             # config = load_config()
             # !haskey(config, proj) && (config[proj] = Dict())
@@ -180,9 +200,9 @@ function push_bakefile_back()
     isfile(bakefile_n(N_HISTORY)) && rm(bakefile_n(N_HISTORY))
     # push back the history stack
     for n in (N_HISTORY-1):1
-        isfile(bakefile_n(n)) && mv(bakefile_n(n), bakefile_n(n+1))
+        isfile(bakefile_n(n)) && mv(bakefile_n(n), bakefile_n(n+1),force=true)
     end
-    mv(bake, bakefile_n(1))
+    mv(bake, bakefile_n(1),force=true)
     touch(bake)
 
     return nothing
@@ -298,6 +318,10 @@ function have_trace_compile()
     return true
 end
 
+trace_compile_path() = unsafe_string(Base.JLOptions().trace_compile)
+
+current_process_sysimage_path() = unsafe_string(Base.JLOptions().image_file)
+
 """
 atexit hook for caching precompile files
 
@@ -313,7 +337,7 @@ function atexit_hook()
 
     !have_trace_compile() && return
 
-    trace_path = abspath(unsafe_string(jloptstc))
+    trace_path = trace_compile_path()
     isempty(trace_path) && return
 
     trace_file = open(trace_path, "r")
