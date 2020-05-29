@@ -22,12 +22,69 @@ const bakeable_libs = [Base,
 
 const __BAKEFILE = "bakefile.jl"
 
+global __PRECOMPILE_CURSOR = 0
+
+function __init__()
+    init_dir()
+    load_config()
+    t = Task() do
+        while true
+            FileWatching.watch_file(joinpath(DEPOT_PATH[1], "logs", "manifest_usage.toml"))
+            sleep(0.01) # debounce, TODO
+            @info "PkgBake: Project Changed, switching sysimg, reboot to take effect"
+            # proj = Base.active_project()
+            # config = load_config()
+            # !haskey(config, proj) && (config[proj] = Dict())
+            # @show config
+            # save_config(config)
+        end
+    end
+    schedule(t)
+    yield()
+end
+
+
 function init_dir()
     isempty(DEPOT_PATH) && @error "DEPOT_PATH is empty!"
     dir = joinpath(DEPOT_PATH[1],"pkgbake")
     !isdir(dir) && mkdir(dir)
     return abspath(dir)
 end
+
+function init_project_dir(project::String)
+    project_dict = Pkg.Types.parse_toml(project)
+    if haskey(project_dict, "uuid")
+        uuid = project_dict["uuid"]
+    else
+        uuid = "UNAMED"
+        # TODO, need to resolve for v1.x somehow as they don't have UUIDs
+    end
+    project_dir = joinpath(init_dir(), uuid)
+    !isdir(project_dir) && mkdir(project_dir)
+end
+
+function init_config()
+    dir = joinpath(DEPOT_PATH[1],"config")
+    configfile = joinpath(dir, "pkgbake.toml")
+    !isfile(configfile) && touch(configfile)
+    return configfile
+end
+
+function load_config()
+    c = Pkg.Types.parse_toml(init_config())
+    @show c, typeof(c)
+    return c
+end
+
+function save_config(config)
+    @show config
+    open(init_config(), "w") do io
+        Pkg.Types.printpkgstyle(io, config)
+    end
+    Pkg.Types.printpkgstyle(config)
+    return nothing
+end
+
 
 """
     bake
@@ -235,6 +292,12 @@ function bakefile_io(f)
     open(f, bake, "a")
 end
 
+function have_trace_compile()
+    jloptstc = Base.JLOptions().trace_compile
+    jloptstc == C_NULL && return false
+    return true
+end
+
 """
 atexit hook for caching precompile files
 
@@ -248,8 +311,7 @@ atexit(PkgBake.atexit_hook)
 """
 function atexit_hook()
 
-    jloptstc = Base.JLOptions().trace_compile
-    jloptstc == C_NULL && return
+    !have_trace_compile() && return
 
     trace_path = abspath(unsafe_string(jloptstc))
     isempty(trace_path) && return
