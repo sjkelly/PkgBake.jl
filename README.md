@@ -13,7 +13,7 @@ flexibility in development and should generally not need to worry about sysimage
 Inside your `.julia/config/startup.jl` add the following:
 
 ```julia
-using PkgBake
+import PkgBake
 
 atexit(PkgBake.atexit_hook)
 ```

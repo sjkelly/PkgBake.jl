@@ -5,21 +5,21 @@ using ProgressMeter
 using MethodAnalysis
 
 #stdlibs
-using Base64, CRC32c, Dates, DelimitedFiles, Distributed, FileWatching,
-      InteractiveUtils, Libdl, LibGit2, LinearAlgebra, Logging,
+using Artifacts, Base64, CRC32c, Dates, DelimitedFiles, 
+      Distributed, FileWatching, 
+      InteractiveUtils, LazyArtifacts, 
+      Libdl, LibGit2, LinearAlgebra, Logging,
       Markdown, Mmap, Printf, Profile, Random, REPL, Serialization, SHA,
-      SharedArrays, Sockets, SparseArrays, SuiteSparse, Test, Unicode, UUIDs,
-      Pkg, Statistics
+      SharedArrays, Sockets, SparseArrays, TOML, Test, Unicode, UUIDs,
+      ArgTools, Downloads, NetworkOptions, Pkg, Statistics, Tar
 
-const base_stdlibs = [Base,
-    # included stdlibs
-    Base64, CRC32c, Dates, DelimitedFiles, Distributed, FileWatching,
-    InteractiveUtils, Libdl, LibGit2, LinearAlgebra, Logging,
-    Markdown, Mmap, Printf, Profile, Random, REPL, Serialization, SHA,
-    SharedArrays, Sockets, SparseArrays, SuiteSparse, Test, Unicode, UUIDs,
-    # external
-    Pkg, Statistics]
-# TODO: Future not included
+const base_stdlibs = [Base, Artifacts, Base64, CRC32c, Dates, DelimitedFiles, 
+Distributed, FileWatching, 
+InteractiveUtils, LazyArtifacts, 
+Libdl, LibGit2, LinearAlgebra, Logging,
+Markdown, Mmap, Printf, Profile, Random, REPL, Serialization, SHA,
+SharedArrays, Sockets, SparseArrays, TOML, Test, Unicode, UUIDs,
+ArgTools, Downloads, NetworkOptions, Pkg, Statistics, Tar]
 
 function get_all_modules()
     mods = Module[]
@@ -43,24 +43,6 @@ global __PRECOMPILE_CURSOR = 0
 
 function __init__()
     init_dir()
-    load_config()
-    t = Task() do
-        while true
-            manifest_usage = joinpath(DEPOT_PATH[1], "logs", "manifest_usage.toml")
-            event = FileWatching.watch_file(manifest_usage)
-            #if event.changed
-            #    @info "PkgBake: Project Changed, switching sysimg, reboot to take effect"
-            #end
-            # findlast(isequal('o'))
-            # proj = Base.active_project()
-            # config = load_config()
-            # !haskey(config, proj) && (config[proj] = Dict())
-            # @show config
-            # save_config(config)
-        end
-    end
-    schedule(t)
-    yield()
 end
 
 
@@ -81,28 +63,6 @@ function init_project_dir(project::String)
     end
     project_dir = joinpath(init_dir(), uuid)
     !isdir(project_dir) && mkdir(project_dir)
-end
-
-function init_config()
-    dir = joinpath(DEPOT_PATH[1],"config")
-    configfile = joinpath(dir, "pkgbake.toml")
-    !isfile(configfile) && touch(configfile)
-    return configfile
-end
-
-function load_config()
-    c = Pkg.Types.parse_toml(init_config())
-    @show c, typeof(c)
-    return c
-end
-
-function save_config(config)
-    @show config
-    open(init_config(), "w") do io
-        Pkg.Types.printpkgstyle(io, config)
-    end
-    Pkg.Types.printpkgstyle(config)
-    return nothing
 end
 
 
@@ -143,6 +103,7 @@ function bake(;project=dirname(Base.active_project()), useproject=false, replace
     end
 
     @info "PkgBake: Found $sanitized_len new precompilable methods for Base out of $original_len generated statements"
+
     @info "PkgBake: Generating sysimage"
     PackageCompiler.create_sysimage(; precompile_statements_file=pc_sanitized, replace_default=replace_default)
 
