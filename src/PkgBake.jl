@@ -103,11 +103,16 @@ function bake(;project=dirname(Base.active_project()), useproject=false, replace
     end
 
     @info "PkgBake: Found $sanitized_len new precompilable methods for Base out of $original_len generated statements"
+    println("Make new sysimg? [y/N]:")
+    ans = readline()
+    if ans == "y"
+        @info "PkgBake: Generating sysimage"
+        PackageCompiler.create_sysimage(; precompile_statements_file=pc_sanitized, replace_default=replace_default)
 
-    @info "PkgBake: Generating sysimage"
-    PackageCompiler.create_sysimage(; precompile_statements_file=pc_sanitized, replace_default=replace_default)
+        push_bakefile_back()
+    end
 
-    push_bakefile_back()
+    nothing
 end
 
 
