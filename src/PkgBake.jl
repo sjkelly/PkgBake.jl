@@ -41,8 +41,16 @@ const __BAKEFILE = "bakefile.jl"
 
 global __PRECOMPILE_CURSOR = 0
 
+global __TRACE_PATH = "" # Avoid getting GC'ed
+
 function __init__()
     init_dir()
+    if !have_trace_compile()
+        path, io = mktemp(;cleanup=false)
+        close(io) # we don't need it open
+        global __TRACE_PATH = path
+        force_trace_compile(__TRACE_PATH)
+    end
 end
 
 
@@ -71,7 +79,7 @@ end
 
 Add additional precompiled methods to Base and StdLibs that are self contained.
 """
-function bake(;project=dirname(Base.active_project()), useproject=false, replace_default=true)
+function bake(;project=dirname(Base.active_project()), yes=false, useproject=false, replace_default=true)
     pkgbakedir = init_dir()
 
     if useproject
@@ -103,9 +111,8 @@ function bake(;project=dirname(Base.active_project()), useproject=false, replace
     end
 
     @info "PkgBake: Found $sanitized_len new precompilable methods for Base out of $original_len generated statements"
-    println("Make new sysimg? [y/N]:")
-    ans = readline()
-    if ans == "y"
+    !yes && println("Make new sysimg? [y/N]:")
+    if yes || readline() == "y"
         @info "PkgBake: Generating sysimage"
         PackageCompiler.create_sysimage(; precompile_statements_file=pc_sanitized, replace_default=replace_default)
 
@@ -292,7 +299,7 @@ current_process_sysimage_path() = unsafe_string(Base.JLOptions().image_file)
 """
     force_trace_compile(::String)
 
-If --trace-compile is not set we will set it to a temp file.
+Force the trace compile to be enabled for the given file.
 """
 function force_trace_compile(path::String)
     # find trace-compile field offset
