@@ -41,8 +41,16 @@ const __BAKEFILE = "bakefile.jl"
 
 global __PRECOMPILE_CURSOR = 0
 
+global __TRACE_PATH = "" # Avoid getting GC'ed
+
 function __init__()
     init_dir()
+    if !have_trace_compile()
+        path, io = mktemp(;cleanup=false)
+        close(io) # we don't need it open
+        global __TRACE_PATH = path
+        force_trace_compile(__TRACE_PATH)
+    end
 end
 
 
@@ -71,7 +79,7 @@ end
 
 Add additional precompiled methods to Base and StdLibs that are self contained.
 """
-function bake(;project=dirname(Base.active_project()), useproject=false, replace_default=true)
+function bake(;project=dirname(Base.active_project()), yes=false, useproject=false, replace_default=true)
     pkgbakedir = init_dir()
 
     if useproject
@@ -103,9 +111,8 @@ function bake(;project=dirname(Base.active_project()), useproject=false, replace
     end
 
     @info "PkgBake: Found $sanitized_len new precompilable methods for Base out of $original_len generated statements"
-    println("Make new sysimg? [y/N]:")
-    ans = readline()
-    if ans == "y"
+    !yes && println("Make new sysimg? [y/N]:")
+    if yes || readline() == "y"
         @info "PkgBake: Generating sysimage"
         PackageCompiler.create_sysimage(; precompile_statements_file=pc_sanitized, replace_default=replace_default)
 
@@ -284,9 +291,27 @@ function have_trace_compile()
     return true
 end
 
-trace_compile_path() = unsafe_string(Base.JLOptions().trace_compile)
+structinfo(T) = [(fieldoffset(T,i), fieldname(T,i), fieldtype(T,i)) for i = 1:fieldcount(T)];
 
+trace_compile_path() = unsafe_string(Base.JLOptions().trace_compile)
 current_process_sysimage_path() = unsafe_string(Base.JLOptions().image_file)
+
+"""
+    force_trace_compile(::String)
+
+Force the trace compile to be enabled for the given file.
+"""
+function force_trace_compile(path::String)
+    # find trace-compile field offset
+    trace_compile_offset = 0
+    for i = 1:fieldcount(Base.JLOptions)
+        if fieldname(Base.JLOptions, i) === :trace_compile
+            trace_compile_offset = fieldoffset(Base.JLOptions, i)
+            break
+        end
+    end
+    unsafe_store!(cglobal(:jl_options, Ptr{UInt8})+trace_compile_offset, pointer(path))
+end
 
 """
 atexit hook for caching precompile files
