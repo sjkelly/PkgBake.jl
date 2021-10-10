@@ -284,9 +284,27 @@ function have_trace_compile()
     return true
 end
 
-trace_compile_path() = unsafe_string(Base.JLOptions().trace_compile)
+structinfo(T) = [(fieldoffset(T,i), fieldname(T,i), fieldtype(T,i)) for i = 1:fieldcount(T)];
 
+trace_compile_path() = unsafe_string(Base.JLOptions().trace_compile)
 current_process_sysimage_path() = unsafe_string(Base.JLOptions().image_file)
+
+"""
+    force_trace_compile(::String)
+
+If --trace-compile is not set we will set it to a temp file.
+"""
+function force_trace_compile(path::String)
+    # find trace-compile field offset
+    trace_compile_offset = 0
+    for i = 1:fieldcount(Base.JLOptions)
+        if fieldname(Base.JLOptions, i) === :trace_compile
+            trace_compile_offset = fieldoffset(Base.JLOptions, i)
+            break
+        end
+    end
+    unsafe_store!(cglobal(:jl_options, Ptr{UInt8})+trace_compile_offset, pointer(path))
+end
 
 """
 atexit hook for caching precompile files
