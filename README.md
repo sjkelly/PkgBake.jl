@@ -17,7 +17,8 @@ import PkgBake
 atexit(PkgBake.atexit_hook)
 ```
 
-PkgBake will enable the `--trace-compile` equivalent automatically for you, and cache the files into `.julia/pkgbake/`
+PkgBake will enable the `--trace-compile` equivalent automatically for you, and cache the files into `.julia/pkgbake/`.
+If you call julia with `--trace-compile`, PkgBake will copy the files at exit.
 
 To "bake" in the new precompiled statements that are exclusive to Base and Stdlibs, run:
 
