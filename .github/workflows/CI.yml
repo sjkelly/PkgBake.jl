@@ -42,37 +42,37 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           flag-name: run${{ matrix.os }}-${{ matrix.version }}-${{ matrix.arch }}
           parallel: true
-  docs:
-    name: Documentation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@v1
-        with:
-          version: '1'
-      - run: |
-          julia --project=docs -e '
-            using Pkg
-            Pkg.develop(PackageSpec(path=pwd()))
-            Pkg.instantiate()'
-      - run: |
-          julia --project=docs -e '
-            using Documenter: DocMeta, doctest
-            using PkgBake
-            DocMeta.setdocmeta!(PkgBake, :DocTestSetup, :(using PkgBake); recursive=true)
-            doctest(PkgBake)'
-      - run: julia --project=docs docs/make.jl
-        env:
-          JULIA_PKG_SERVER: ""
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
-  finish:
-    needs: test
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Coveralls Finished
-        uses: coverallsapp/github-action@master
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          parallel-finished: true
+#  docs:
+#    name: Documentation
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v2
+#      - uses: julia-actions/setup-julia@v1
+#        with:
+#          version: '1'
+#      - run: |
+#          julia --project=docs -e '
+#            using Pkg
+#            Pkg.develop(PackageSpec(path=pwd()))
+#            Pkg.instantiate()'
+#      - run: |
+#          julia --project=docs -e '
+#            using Documenter: DocMeta, doctest
+#            using PkgBake
+#            DocMeta.setdocmeta!(PkgBake, :DocTestSetup, :(using PkgBake); recursive=true)
+#            doctest(PkgBake)'
+#      - run: julia --project=docs docs/make.jl
+#        env:
+#          JULIA_PKG_SERVER: ""
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+#  finish:
+#    needs: test
+#    if: always()
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Coveralls Finished
+#        uses: coverallsapp/github-action@master
+#        with:
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#          parallel-finished: true
