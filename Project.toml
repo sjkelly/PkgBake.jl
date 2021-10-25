@@ -3,7 +3,7 @@ uuid = "bf1c9d19-6d6d-96d5-9eb1-ae47005b5dcb"
 keywords = ["precompile", "package", "baking"]
 license = "MIT"
 desc = "Precompilation tracker and sanitizer."
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 ArgTools = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
