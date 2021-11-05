@@ -76,7 +76,7 @@ function bake(;project=dirname(Base.active_project()), yes=false, useproject=fal
 
     pc_unsanitized = joinpath(pkgbakedir, "pkgbake_unsanitized.jl")
     @info "PkgBake: Writing unsanitized precompiles to $pc_unsanitized"
-    open(pc_unsanitized, "w") do io
+    open(pc_unsanitized, "a") do io
         for line in precompile_lines
             println(io, line)
         end
@@ -88,7 +88,7 @@ function bake(;project=dirname(Base.active_project()), yes=false, useproject=fal
 
     pc_sanitized = joinpath(pkgbakedir, "pkgbake_sanitized.jl")
     @info "PkgBake: Writing sanitized precompiles to $pc_sanitized"
-    open(pc_sanitized, "w") do io
+    open(pc_sanitized, "a") do io
         for line in sanitized_lines
             println(io, line)
         end
@@ -99,8 +99,6 @@ function bake(;project=dirname(Base.active_project()), yes=false, useproject=fal
     if yes || readline() == "y"
         @info "PkgBake: Generating sysimage"
         PackageCompiler.create_sysimage(; precompile_statements_file=pc_sanitized, replace_default=replace_default)
-
-        push_bakefile_back()
     end
 
     nothing
