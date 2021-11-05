@@ -1,7 +1,6 @@
 module PkgBake
 
 using PackageCompiler
-using ProgressMeter
 using MethodAnalysis
 
 #stdlibs
@@ -113,9 +112,6 @@ function bakefile_io(f)
     !isfile(bake) && touch(bake)
     open(f, bake, "a")
 end
-
-trace_compile_path() = unsafe_string(Base.JLOptions().trace_compile)
-current_process_sysimage_path() = unsafe_string(Base.JLOptions().image_file)
 
 """
 atexit hook for caching precompile files

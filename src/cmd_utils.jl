@@ -14,6 +14,8 @@ end
     force_trace_compile(::String)
 
 Force the trace compile to be enabled for the given file.
+Note: Make sure the given string is no GCed or bad stuff
+will happen.
 """
 function force_trace_compile(path::String)
     # find trace-compile field offset
@@ -26,3 +28,7 @@ function force_trace_compile(path::String)
     end
     unsafe_store!(cglobal(:jl_options, Ptr{UInt8})+trace_compile_offset, pointer(path))
 end
+
+
+trace_compile_path() = unsafe_string(Base.JLOptions().trace_compile)
+current_process_sysimage_path() = unsafe_string(Base.JLOptions().image_file)
